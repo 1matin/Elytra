@@ -10,49 +10,79 @@ env:
   RUSTFLAGS: "-Dwarnings"
 
 jobs:
-  build_android:
+  build:
     name: Build ${{ matrix.target }}
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
-        target:
-          - aarch64-linux-android
-          - armv7-linux-androideabi
+        include:
+          - target: aarch64-linux-android
+            api: "21"
+            cc: aarch64-linux-android21-clang
+            cxx: aarch64-linux-android21-clang++
+            ar: llvm-ar
+            ranlib: llvm-ranlib
+
+          - target: armv7-linux-androideabi
+            api: "21"
+            cc: armv7a-linux-androideabi21-clang
+            cxx: armv7a-linux-androideabi21-clang++
+            ar: llvm-ar
+            ranlib: llvm-ranlib
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Install Rust target
         run: rustup target add ${{ matrix.target }}
 
-      - uses: Swatinem/rust-cache@v2
-
       - name: Install Android NDK
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r27c
 
-      - name: Configure linker
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Configure Android toolchain
+        shell: bash
         run: |
-          if [ "${{ matrix.target }}" = "aarch64-linux-android" ]; then
-            echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang" >> $GITHUB_ENV
-          else
-            echo "CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/armv7a-linux-androideabi21-clang" >> $GITHUB_ENV
-          fi
+          TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+
+          case "${{ matrix.target }}" in
+            aarch64-linux-android)
+              echo "CC_aarch64_linux_android=$TOOLCHAIN/${{ matrix.cc }}" >> $GITHUB_ENV
+              echo "CXX_aarch64_linux_android=$TOOLCHAIN/${{ matrix.cxx }}" >> $GITHUB_ENV
+              echo "AR_aarch64_linux_android=$TOOLCHAIN/${{ matrix.ar }}" >> $GITHUB_ENV
+              echo "RANLIB_aarch64_linux_android=$TOOLCHAIN/${{ matrix.ranlib }}" >> $GITHUB_ENV
+              echo "CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$TOOLCHAIN/${{ matrix.cc }}" >> $GITHUB_ENV
+              ;;
+            armv7-linux-androideabi)
+              echo "CC_armv7_linux_androideabi=$TOOLCHAIN/${{ matrix.cc }}" >> $GITHUB_ENV
+              echo "CXX_armv7_linux_androideabi=$TOOLCHAIN/${{ matrix.cxx }}" >> $GITHUB_ENV
+              echo "AR_armv7_linux_androideabi=$TOOLCHAIN/${{ matrix.ar }}" >> $GITHUB_ENV
+              echo "RANLIB_armv7_linux_androideabi=$TOOLCHAIN/${{ matrix.ranlib }}" >> $GITHUB_ENV
+              echo "CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER=$TOOLCHAIN/${{ matrix.cc }}" >> $GITHUB_ENV
+              ;;
+          esac
 
       - name: Build release
         run: cargo build --release --target ${{ matrix.target }}
 
       - name: Prepare artifacts
+        shell: bash
         run: |
           mkdir -p dist
-          cp target/${{ matrix.target }}/release/pumpkin dist/pumpkin-${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/pumpkin \
+             dist/pumpkin-${{ matrix.target }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: pumpkin-${{ matrix.target }}
           path: dist/pumpkin-${{ matrix.target }}
+          compression-level: 9

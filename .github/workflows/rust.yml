@@ -32,6 +32,9 @@ jobs:
             ar: llvm-ar
             ranlib: llvm-ranlib
 
+          - target: aarch64-unknown-linux-musl
+            os: linux-musl
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,13 +45,21 @@ jobs:
         run: rustup target add ${{ matrix.target }}
 
       - name: Install Android NDK
+        if: matrix.os != 'linux-musl'
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r27c
 
+      - name: Install musl cross toolchain
+        if: matrix.os == 'linux-musl'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
       - uses: Swatinem/rust-cache@v2
 
       - name: Configure Android toolchain
+        if: matrix.os != 'linux-musl'
         shell: bash
         run: |
           TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
